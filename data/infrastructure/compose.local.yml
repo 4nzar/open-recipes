@@ -1,0 +1,123 @@
+version: "3"
+services:
+
+#  app:
+#    build:
+#      context: ../../
+#      dockerfile: data/infrastructure/Dockerfile.ui
+#      args:
+#        - HTTP_PROXY=${HTTP_PROXY}
+#        - HTTPS_PROXY=${HTTPS_PROXY}
+#        - APP=frontend
+#    image: open-recipes-application
+#    ports:
+#      - "${API_PORT:-8080}:80"
+#    links:
+#      - gateway
+#    container_name: open-recipes-application
+#    networks:
+#      - frontend
+
+  gateway:
+    build:
+      context: ../../
+      dockerfile: data/infrastructure/Dockerfile.service
+      args:
+        - HTTP_PROXY=${HTTP_PROXY}
+        - HTTPS_PROXY=${HTTPS_PROXY}
+        - APP=api-gateway
+    image: open-recipes-api-gateway
+    ports:
+      - "${API_GATEWAY_PORT:-8081}:3000"
+    depends_on:
+      redis:
+        condition: service_started
+    links:
+      - service-auth
+    container_name: open-recipes-api-gateway
+    networks:
+      - backend
+      - frontend
+
+  service-auth:
+    build:
+      context: ../../
+      dockerfile: data/infrastructure/Dockerfile.service
+      args:
+        - HTTP_PROXY_SERVICE_AUTH=${HTTP_PROXY}
+        - HTTPS_PROXY=${HTTPS_PROXY}
+        - APP=service-auth
+    image: open-recipes-service-auth
+    ports:
+      - "${SERVICE_AUTH_PORT:-8082}:3000"
+    depends_on:
+      redis:
+        condition: service_started
+      postgres:
+        condition: service_healthy
+    container_name: open-recipes-service-auth
+    networks:
+      - backend
+
+  postgres:
+    container_name: open-recipes-postgres
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-open-recipes}
+    restart: always
+    volumes:
+      - postgres-storage:/var/lib/postgresql/data/
+        #      - ../init/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - ${POSTGRES_PORT:-5432}:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - backend
+
+  redis:
+    image: redis:5.0.9-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    container_name: ${REDIS_HOSTNAME:-open-recipes-redis}
+    networks:
+      - backend
+
+#  prometheus:
+#    build:
+#      context: data/monitoring/prometheus
+#    ports:
+#      - "${PROMETHEUS_PORT}:9090"
+#    volumes:
+#      - prometheus-storage:/prometheus
+#    container_name: open-recipes-prometheus
+#
+#  grafana:
+#    image: "grafana/grafana:9.5.2"
+#    ports:
+#      - "${GRAFANA_PORT}:3000"
+#    volumes:
+#      - ./grafana/provisioning/:/etc/grafana/provisioning/
+#      - grafana-storage:/var/lib/grafana
+#    depends_on:
+#      - prometheus
+#    container_name: open-recipes-grafana
+
+volumes:
+  postgres-storage:
+    driver: local
+  #  prometheus-storage:
+  #  driver: local
+  #grafana-storage:
+  #  driver: local
+
+networks:
+  backend:
+    driver: bridge
+  frontend:
